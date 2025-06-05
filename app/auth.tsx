@@ -10,61 +10,69 @@ export default function AuthScreen() {
     const [password, setPassword] = useState<string>("");
     const [error, setError] = useState<string | null>(null); // Initialize with null
     const [isLoading, setIsLoading] = useState<boolean>(false); // For loading indicator
-
+    const [firstName, setFirstName] = useState<string>(""); // Added for registration
+    const [lastName, setLastName] = useState<string>("");
+    
     const { signIn, signUp } = useAuth();
 
-    async function handleAuth() {
-        setError(null); // Clear previous errors
-        if (!email.trim() || !password.trim()) {
-            setError("Please fill in all inputs.");
+    async function handleAuth(){
+        setError(null);
+        if(!email.trim() || !password.trim()){
+            setError("Please fill all the inputs")
+            return
+        }
+        if(isSignUp && (!firstName.trim() || !lastName.trim())){
+            setError('First Name & Last Name is required')
             return;
         }
-        // Appwrite's default minimum password length is 8
-        if (password.length < 8) {
-            setError("Password must be at least 8 characters long.");
-            return;
+        if(password.length < 8){
+            setError("Password must be at least 8 characters long.")
         }
 
-        setIsLoading(true);
-        let response: string | null = null;
-
-        try {
-            if (isSignUp) { // User wants to Sign Up
-                response = await signUp(email, password);
-            } else { // User wants to Sign In
-                response = await signIn(email, password);
-            }
-
-            if (response) { // If response is not null, it means an error message was returned
-                setError(response);
-            } else {
-                // If successful (response is null), clear any previous error and navigate
-                setError(null);
-                // Consider clearing email/password fields here if desired
-                // setEmail("");
-                // setPassword("");
-                router.replace('/(tabs)'); // Or your desired route
-            }
-        } catch (e) {
-            // Catch any unexpected errors from the auth functions themselves
-            // (though your context already tries to catch and return string messages)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        
+        if (!emailRegex.test(email)) {
+            setError("Please enter a valid email address.");
+            return;
+        }
+        let result:any;
+        try{
+            setIsLoading(true);
+        if(isSignUp){
+            result = await signUp({first_name:firstName,last_name:lastName,email,password});
+        }else{
+            result = await signIn(email,password)
+        }
+        if(!result){
+            setError(null);
+            setEmail("");
+            setPassword("");
+            setFirstName("");
+            setLastName("");
+            router.replace('/(tabs)')
+        }else{
+            setError(result.error || "Authentication Failed.")
+        }
+        }catch(e){
             if (e instanceof Error) {
                 setError(e.message);
             } else {
                 setError("An unexpected error occurred.");
             }
             console.error("Authentication error:", e);
-        } finally {
+        } finally{
             setIsLoading(false);
         }
+
     }
 
     function handleSwitchMode() {
         setIsSignUp((prev) => !prev);
         setError(null); // Clear errors when switching mode
-        // Optionally clear input fields as well
-        // setEmail("");
-        // setPassword("");
+                setEmail("");
+        setPassword("");
+        setFirstName("");
+        setLastName("");
     }
 
     return (
@@ -77,6 +85,30 @@ export default function AuthScreen() {
                     {isSignUp ? "Create Account" : "Welcome Back"}
                 </Text>
                 <View style={styles.mainInputStyles}>
+                                        {isSignUp && (
+                        <>
+                            <TextInput
+                                style={styles.textInputStyle}
+                                value={firstName}
+                                label={"First Name"}
+                                placeholder="Enter your first name"
+                                mode="outlined"
+                                onChangeText={setFirstName}
+                                autoCapitalize="words"
+                                disabled={isLoading}
+                            />
+                            <TextInput
+                                style={styles.textInputStyle}
+                                value={lastName}
+                                label={"Last Name"}
+                                placeholder="Enter your last name"
+                                mode="outlined"
+                                onChangeText={setLastName}
+                                autoCapitalize="words"
+                                disabled={isLoading}
+                            />
+                        </>
+                    )}
                     <TextInput
                         style={styles.textInputStyle}
                         value={email}

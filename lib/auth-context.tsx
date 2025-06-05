@@ -1,88 +1,134 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { ID, Models } from "react-native-appwrite";
-import { account } from "./appwrite";
+import { authAPI, LoginData, RegisterData, tokenManager, User } from "../services/api";
 
 type AuthContextType = {
-    user:Models.User<Models.Preferences> | null;
-    isLoadingUser: boolean;
-    signUp:(email:string,password:string) =>Promise<string | null>
-    signIn:(email:string,password:string) =>Promise<string | null>
-    signOut:() =>Promise<void>
-
-}
+  user: User | null;
+  isLoadingUser: boolean;
+  signUp: (userData: RegisterData) => Promise<string | null>;
+  signIn: (email: string, password: string) => Promise<string | null>;
+  signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-
-export function AuthProvider({children}:{children:React.ReactNode}){
-    const [user, setUser] = useState<Models.User<Models.Preferences> | null>(
-    null
-  );
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState<boolean>(true);
 
-  const getUser = async()=>{
-    try{
-        let session = await account.get();
-        setUser(session);
-    }catch{
+  // Get user profile from backend
+  const getUser = async () => {
+    try {
+      const token = await tokenManager.getToken();
+      if (!token) {
         setUser(null);
-    }finally{
-            setIsLoadingUser(false);  
-    }
-  }
+        return;
+      }
 
-  useEffect(()=>{
+      const response = await authAPI.getProfile();
+      if (response.success && response.data) {
+        setUser(response.data.user);
+      } else {
+        // Token might be invalid, remove it
+        await tokenManager.removeToken();
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+      // Remove invalid token
+      await tokenManager.removeToken();
+      setUser(null);
+    } finally {
+      setIsLoadingUser(false);
+    }
+  };
+
+  // Check for existing session on app start
+  useEffect(() => {
     getUser();
-  },[])
+  }, []);
 
-  const signUp = async (email: string, password: string) => {
+  // Sign up new user
+  const signUp = async (userData: RegisterData): Promise<string | null> => {
     try {
-      await account.create(ID.unique(), email, password);
-      await signIn(email, password);
-      return null;
-    } catch (error) {
-      if (error instanceof Error) {
-        return error.message;
+      setIsLoadingUser(true);
+      const response = await authAPI.register(userData);
+      
+      if (response.success && response.data) {
+        // Store token and set user
+        await tokenManager.setToken(response.data.token);
+        setUser(response.data.user);
+        return null; // Success
+      } else {
+        return response.message || response.error || "Registration failed";
       }
-
-      return "An error occured during signup";
+    } catch (error) {
+      console.error('SignUp error:', error);
+      return "An error occurred during signup";
+    } finally {
+      setIsLoadingUser(false);
     }
   };
-  const signIn = async (email: string, password: string) => {
-    try {
-      await account.createEmailPasswordSession(email, password);
-      const session = await account.get();
-      setUser(session);
-      return null;
-    } catch (error) {
-      if (error instanceof Error) {
-        return error.message;
-      }
 
-      return "An error occured during sign in";
+  // Sign in existing user
+  const signIn = async (email: string, password: string): Promise<string | null> => {
+    try {
+      setIsLoadingUser(true);
+      const loginData: LoginData = { email, password };
+      const response = await authAPI.login(loginData);
+      
+      if (response.success && response.data) {
+        // Store token and set user
+        await tokenManager.setToken(response.data.token);
+        setUser(response.data.user);
+        return null; // Success
+      } else {
+        return response.message || response.error || "Login failed";
+      }
+    } catch (error) {
+      console.error('SignIn error:', error);
+      return "An error occurred during sign in";
+    } finally {
+      setIsLoadingUser(false);
     }
   };
-    const signOut = async () => {
+
+  // Sign out user
+  const signOut = async (): Promise<void> => {
     try {
-      await account.deleteSession("current");
+      // Remove token from secure storage
+      await tokenManager.removeToken();
       setUser(null);
     } catch (error) {
-      console.log(error);
+      console.error('SignOut error:', error);
     }
   };
-    return<>
+
+  // Refresh user data
+  const refreshUser = async (): Promise<void> => {
+    await getUser();
+  };
+
+  return (
     <AuthContext.Provider
-      value={{ user, isLoadingUser, signUp, signIn ,signOut}}
+      value={{ 
+        user, 
+        isLoadingUser, 
+        signUp, 
+        signIn, 
+        signOut, 
+        refreshUser 
+      }}
     >
       {children}
     </AuthContext.Provider>
-    </>
+  );
 }
 
-export function useAuth(){
-    const context = useContext(AuthContext)
-    if(context== undefined){
-        throw new Error("useAuth issue.")
-    }
-    return context
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }

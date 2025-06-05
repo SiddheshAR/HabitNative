@@ -12,7 +12,7 @@ function RouteGuard({children}:{children:React.ReactNode}){
     const isAuthScreen = segments[0] === "auth"
     const timer = setTimeout(() => {
       setIsReady(true);
-      if (!user && !isAuthScreen && !isLoadingUser) {
+      if (!user ) {
         router.replace("/auth");
       }else if(user && isAuthScreen && !isLoadingUser){
         router.replace("/(tabs)")
